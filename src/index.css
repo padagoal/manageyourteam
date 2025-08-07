@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+/* App theme tokens for Tailwind v4 */
+@theme {
+  --color-success: #22c55e; /* green-500 */
+  --color-warning: #eab308; /* yellow-500 */
+  --color-danger: #ef4444;  /* red-500 */
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  @apply antialiased text-gray-900 bg-neutral-50;
+}
+
+.app-title {
+  @apply font-semibold text-lg;
+}
+
+.status-success { @apply border-[--color-success] bg-[--color-success]/10 };
+.status-warning { @apply border-[--color-warning] bg-[--color-warning]/10 };
+.status-danger { @apply border-[--color-danger] bg-[--color-danger]/10 };
