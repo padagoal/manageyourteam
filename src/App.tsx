@@ -256,6 +256,9 @@ export default function App() {
   const dragOffsetRef = useRef({ x: 0, y: 0 })
   const [connectDrag, setConnectDrag] = useState<{ fromId: string; x: number; y: number } | null>(null)
   const [connectHoverId, setConnectHoverId] = useState<string | null>(null)
+  const [hoveredConnectionId, setHoveredConnectionId] = useState<string | null>(null)
+  const [hoveredAutoKey, setHoveredAutoKey] = useState<string | null>(null)
+  const [hiddenAutoConnections, setHiddenAutoConnections] = useState<Set<string>>(new Set())
 
   const { zoom, pan, onWheel, onMouseDown, onMouseMove, onMouseUp } = useDragZoom()
   const zoomRef = useRef(1)
@@ -400,6 +403,14 @@ export default function App() {
     setConnectDrag({ fromId, x, y })
   }
 
+  const getConnectionMidpoint = (c: Connection) => {
+    const a = getRightAnchor(c.fromId)
+    const b = getLeftAnchor(c.toId)
+    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+  }
+
+  const autoKey = (aId: string, bId: string) => `${aId}__${bId}`
+
   // Keyboard shortcut: N to open the create modal
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -512,6 +523,10 @@ export default function App() {
           fill="none"
           vectorEffect="non-scaling-stroke"
           shapeRendering="geometricPrecision"
+          pointerEvents="stroke"
+          style={{ cursor: 'pointer' }}
+          onMouseEnter={() => setHoveredConnectionId(c.id)}
+          onMouseLeave={() => setHoveredConnectionId((h) => (h === c.id ? null : h))}
         />
       )
     }
@@ -557,6 +572,8 @@ export default function App() {
       for (let j = 0; j < pairCount; j++) {
         const a = colA[j]
         const b = colB[j]
+        const key = autoKey(a.id, b.id)
+        if (hiddenAutoConnections.has(key)) continue
         const sa = nodeSizes[a.id]
         const sb = nodeSizes[b.id]
         const ax = a.x + (sa?.w ?? 420)
@@ -566,13 +583,17 @@ export default function App() {
         const mid = (ax + bx) / 2
           rendered.push(
             <path
-              key={`${a.id}-${b.id}`}
+            key={`${a.id}-${b.id}`}
               d={`M ${ax} ${ay} C ${mid} ${ay}, ${mid} ${by}, ${bx} ${by}`}
               className="stroke-gray-300"
               strokeWidth={2}
               fill="none"
               vectorEffect="non-scaling-stroke"
               shapeRendering="geometricPrecision"
+            pointerEvents="stroke"
+            style={{ cursor: 'pointer' }}
+            onMouseEnter={() => setHoveredAutoKey(key)}
+            onMouseLeave={() => setHoveredAutoKey((h) => (h === key ? null : h))}
             />
           )
       }
@@ -647,7 +668,7 @@ export default function App() {
           className="absolute inset-0 origin-top-left"
           style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
         >
-          <svg className="absolute inset-0 w-full h-full pointer-events-none z-0" style={{ overflow: 'visible' }}>
+          <svg className="absolute inset-0 w-full h-full z-0" style={{ overflow: 'visible' }}>
             <ConnectionSvg />
           </svg>
           {/* Department headers */}
@@ -655,6 +676,50 @@ export default function App() {
           {nodes.map((n) => (
             <NodeCard key={n.id} n={n} />
           ))}
+          {/* Delete button for manual connections */}
+          {hoveredConnectionId && (() => {
+            const c = connections.find((x) => x.id === hoveredConnectionId)
+            if (!c) return null
+            const mid = getConnectionMidpoint(c)
+            return (
+              <button
+                key="conn-delete"
+                className="absolute -translate-x-1/2 -translate-y-1/2 h-6 w-6 rounded-full bg-white text-gray-700 border shadow"
+                style={{ left: mid.x, top: mid.y }}
+                title="Delete connection"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setConnections((prev) => prev.filter((x) => x.id !== c.id))
+                  setHoveredConnectionId(null)
+                }}
+              >
+                ×
+              </button>
+            )
+          })()}
+
+          {/* Delete button for automatic connections */}
+          {hoveredAutoKey && (() => {
+            const [fromId, toId] = hoveredAutoKey.split('__')
+            const a = getRightAnchor(fromId)
+            const b = getLeftAnchor(toId)
+            const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+            return (
+              <button
+                key="auto-conn-delete"
+                className="absolute -translate-x-1/2 -translate-y-1/2 h-6 w-6 rounded-full bg-white text-gray-700 border shadow"
+                style={{ left: mid.x, top: mid.y }}
+                title="Hide connection"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setHiddenAutoConnections((prev) => new Set(prev).add(hoveredAutoKey))
+                  setHoveredAutoKey(null)
+                }}
+              >
+                ×
+              </button>
+            )
+          })()}
         </div>
       </div>
 
