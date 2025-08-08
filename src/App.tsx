@@ -209,7 +209,6 @@ function useDragZoom() {
   const lastRef = useRef({ x: 0, y: 0 })
 
   const onWheel = (e: React.WheelEvent) => {
-    e.preventDefault()
     // With Ctrl/Cmd key: zoom toward cursor. Otherwise: pan using scroll deltas
     if (e.ctrlKey || e.metaKey) {
       const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
@@ -281,11 +280,13 @@ export default function App() {
   const [hoveredAutoKey, setHoveredAutoKey] = useState<string | null>(null)
   const [hiddenAutoConnections, setHiddenAutoConnections] = useState<Set<string>>(new Set())
 
-  const { zoom, pan, onWheel, onMouseDown, onMouseMove, onMouseUp } = useDragZoom()
+  const { zoom, pan, setPan, onWheel, onMouseDown, onMouseMove, onMouseUp } = useDragZoom()
   const zoomRef = useRef(1)
   useEffect(() => {
     zoomRef.current = zoom
   }, [zoom])
+  const containerRef = useRef<HTMLDivElement | null>(null)
+  const focusNodeIdRef = useRef<string | null>(null)
 
   const startDrag = (e: React.MouseEvent, id: string) => {
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
@@ -383,6 +384,30 @@ export default function App() {
     arrangeByDepartment()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // After arranging (or any nodes change), if there is a focus target, pan to reveal it
+  useEffect(() => {
+    if (!focusNodeIdRef.current) return
+    const id = focusNodeIdRef.current
+    const n = nodes.find((x) => x.id === id)
+    if (!n || !containerRef.current) {
+      focusNodeIdRef.current = null
+      return
+    }
+    const container = containerRef.current
+    const { clientWidth: cw, clientHeight: ch } = container
+    const targetX = n.x * zoom + pan.x
+    const targetY = n.y * zoom + pan.y
+    const margin = 80
+    let nextPanX = pan.x
+    let nextPanY = pan.y
+    if (targetX < margin) nextPanX += margin - targetX
+    else if (targetX > cw - margin - 420 * zoom) nextPanX -= targetX - (cw - margin - 420 * zoom)
+    if (targetY < margin) nextPanY += margin - targetY
+    else if (targetY > ch - margin - 220 * zoom) nextPanY -= targetY - (ch - margin - 220 * zoom)
+    if (nextPanX !== pan.x || nextPanY !== pan.y) setPan({ x: nextPanX, y: nextPanY })
+    focusNodeIdRef.current = null
+  }, [nodes, pan, zoom, setPan])
 
   // Track node sizes to anchor connectors to card edges
   const [nodeSizes, setNodeSizes] = useState<Record<string, { w: number; h: number }>>({})
@@ -494,6 +519,8 @@ export default function App() {
               <select
                 className="rounded-lg text-sm font-semibold pl-3 pr-8 py-1.5 shadow-sm border-0 appearance-none"
                 style={{ backgroundColor: colors.header, color: colors.headerText }}
+                id={`status-${n.id}`}
+                name={`status-${n.id}`}
                 value={n.status}
                 onChange={(e) => changeStatus(n.id, e.target.value as Status)}
               >
@@ -680,15 +707,16 @@ export default function App() {
       <div
         className="relative flex-1 overflow-hidden bg-[radial-gradient(circle_at_1px_1px,#e5e7eb_1px,transparent_1px)]"
         style={{ backgroundSize: '24px 24px' }}
+        ref={containerRef}
         onWheel={onWheel}
         onMouseDown={onMouseDown}
         onMouseMove={onCanvasMouseMove}
         onMouseUp={onCanvasMouseUp}
       >
-        <div
-          className="absolute inset-0 origin-top-left"
-          style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
-        >
+          <div
+            className="absolute inset-0 origin-top-left"
+            style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
+          >
           <svg className="absolute inset-0 w-full h-full z-0" style={{ overflow: 'visible' }}>
             <ConnectionSvg />
           </svg>
@@ -756,6 +784,8 @@ export default function App() {
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 placeholder="Short reason..."
+                id="status-change-reason"
+                name="status-change-reason"
                 className="w-full h-28 rounded-md border p-2 text-sm"
               />
               <div className="flex justify-end gap-2">
@@ -817,6 +847,7 @@ export default function App() {
                 }
                 setNodes((prev) => [...prev, newNode])
                 // After creating, arrange into columns
+                focusNodeIdRef.current = id
                 setTimeout(arrangeByDepartment, 0)
                 setCreateOpen(false)
                 setCreateData({ personName: '', title: '', department: '', status: 'success', keyResponsibilities: '', keyMetrics: '', scope: '' })
@@ -825,36 +856,48 @@ export default function App() {
               <div className="rounded-xl border bg-white/80 p-5 grid grid-cols-2 gap-3 text-sm text-gray-800">
                 <label className="grid gap-1">
                   <span className="text-gray-700">Person Name</span>
+                  <label htmlFor="create-person-name" className="sr-only">Person Name</label>
                   <input
                     className="rounded-md border px-2 py-1"
                     value={createData.personName}
                     onChange={(e) => setCreateData((d) => ({ ...d, personName: e.target.value }))}
+                    id="create-person-name"
+                    name="personName"
                     required
                   />
                 </label>
                 <label className="grid gap-1">
                   <span className="text-gray-700">Title</span>
+                  <label htmlFor="create-title" className="sr-only">Title</label>
                   <input
                     className="rounded-md border px-2 py-1"
                     value={createData.title}
                     onChange={(e) => setCreateData((d) => ({ ...d, title: e.target.value }))}
+                    id="create-title"
+                    name="title"
                     required
                   />
                 </label>
                 <label className="grid gap-1">
                   <span className="text-gray-700">Department</span>
+                  <label htmlFor="create-department" className="sr-only">Department</label>
                   <input
                     className="rounded-md border px-2 py-1"
                     value={createData.department}
                     onChange={(e) => setCreateData((d) => ({ ...d, department: e.target.value }))}
+                    id="create-department"
+                    name="department"
                   />
                 </label>
                 <label className="grid gap-1">
                   <span className="text-gray-700">Status</span>
+                  <label htmlFor="create-status" className="sr-only">Status</label>
                   <select
                     className="rounded-md border px-2 py-1"
                     value={createData.status}
                     onChange={(e) => setCreateData((d) => ({ ...d, status: e.target.value as Status }))}
+                    id="create-status"
+                    name="status"
                   >
                     <option value="success">Success</option>
                     <option value="warning">Warning</option>
@@ -865,26 +908,35 @@ export default function App() {
               <div className="p-5 rounded-xl border bg-white/80 mt-4 grid gap-3 text-sm text-gray-800">
                 <label className="grid gap-1">
                   <span className="text-gray-700">Key Responsibilities</span>
+                  <label htmlFor="create-key-resp" className="sr-only">Key Responsibilities</label>
                   <textarea
                     className="rounded-md border px-2 py-1 h-16"
                     value={createData.keyResponsibilities}
                     onChange={(e) => setCreateData((d) => ({ ...d, keyResponsibilities: e.target.value }))}
+                    id="create-key-resp"
+                    name="keyResponsibilities"
                   />
                 </label>
                 <label className="grid gap-1">
                   <span className="text-gray-700">Key Metrics</span>
+                  <label htmlFor="create-key-metrics" className="sr-only">Key Metrics</label>
                   <textarea
                     className="rounded-md border px-2 py-1 h-16"
                     value={createData.keyMetrics}
                     onChange={(e) => setCreateData((d) => ({ ...d, keyMetrics: e.target.value }))}
+                    id="create-key-metrics"
+                    name="keyMetrics"
                   />
                 </label>
                 <label className="grid gap-1">
                   <span className="text-gray-700">Scope</span>
+                  <label htmlFor="create-scope" className="sr-only">Scope</label>
                   <textarea
                     className="rounded-md border px-2 py-1 h-16"
                     value={createData.scope}
                     onChange={(e) => setCreateData((d) => ({ ...d, scope: e.target.value }))}
+                    id="create-scope"
+                    name="scope"
                   />
                 </label>
                 <div className="flex justify-end gap-2 pt-1">
