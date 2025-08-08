@@ -16,7 +16,7 @@ type PersonRole = {
   scope: string
 }
 
-// type Connection = { fromId: string; toId: string }
+type Connection = { id: string; fromId: string; toId: string }
 
 const STATUS_PALETTE: Record<Status, { body: string; header: string; headerText: string; border: string }> = {
   success: { body: '#CDF4D3', header: '#9BE7A7', headerText: '#111827', border: '#9BE7A7' },
@@ -239,6 +239,7 @@ function useDragZoom() {
 
 export default function App() {
   const [nodes, setNodes] = useState<PersonRole[]>(initialData)
+  const [connections, setConnections] = useState<Connection[]>([])
   const [statusModal, setStatusModal] = useState<{ id: string; next: Status } | null>(null)
   const [reason, setReason] = useState('')
   const [createOpen, setCreateOpen] = useState(false)
@@ -253,6 +254,8 @@ export default function App() {
   }>({ personName: '', title: '', department: '', status: 'success', keyResponsibilities: '', keyMetrics: '', scope: '' })
   const draggingIdRef = useRef<string | null>(null)
   const dragOffsetRef = useRef({ x: 0, y: 0 })
+  const [connectDrag, setConnectDrag] = useState<{ fromId: string; x: number; y: number } | null>(null)
+  const [connectHoverId, setConnectHoverId] = useState<string | null>(null)
 
   const { zoom, pan, onWheel, onMouseDown, onMouseMove, onMouseUp } = useDragZoom()
   const zoomRef = useRef(1)
@@ -269,17 +272,36 @@ export default function App() {
 
   const onCanvasMouseMove = (e: React.MouseEvent) => {
     onMouseMove(e)
-    if (!draggingIdRef.current) return
-    const id = draggingIdRef.current
     const canvasRect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    const x = (e.clientX - canvasRect.left - dragOffsetRef.current.x - pan.x) / zoom
-    const y = (e.clientY - canvasRect.top - dragOffsetRef.current.y - pan.y) / zoom
-    setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, x, y } : n)))
+    if (draggingIdRef.current) {
+      const id = draggingIdRef.current
+      const x = (e.clientX - canvasRect.left - dragOffsetRef.current.x - pan.x) / zoom
+      const y = (e.clientY - canvasRect.top - dragOffsetRef.current.y - pan.y) / zoom
+      setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, x, y } : n)))
+    }
+    if (connectDrag) {
+      const x = (e.clientX - canvasRect.left - pan.x) / zoom
+      const y = (e.clientY - canvasRect.top - pan.y) / zoom
+      setConnectDrag((d) => (d ? { ...d, x, y } : d))
+    }
   }
 
   const onCanvasMouseUp = () => {
     draggingIdRef.current = null
     onMouseUp()
+    if (connectDrag) {
+      const fromId = connectDrag.fromId
+      const toId = connectHoverId
+      setConnectDrag(null)
+      setConnectHoverId(null)
+      if (toId && toId !== fromId) {
+        setConnections((prev) => {
+          if (prev.some((c) => c.fromId === fromId && c.toId === toId)) return prev
+          const id = 'c_' + Math.random().toString(36).slice(2, 9)
+          return [...prev, { id, fromId, toId }]
+        })
+      }
+    }
   }
 
   const changeStatus = (id: string, next: Status) => {
@@ -359,6 +381,25 @@ export default function App() {
     ;(el as any).__ro = ro
   }
 
+  const getRightAnchor = (id: string) => {
+    const n = nodes.find((x) => x.id === id)
+    if (!n) return { x: 0, y: 0 }
+    const s = nodeSizes[id]
+    return { x: n.x + (s?.w ?? 420), y: n.y + ((s?.h ?? 220) / 2) }
+  }
+
+  const getLeftAnchor = (id: string) => {
+    const n = nodes.find((x) => x.id === id)
+    if (!n) return { x: 0, y: 0 }
+    const s = nodeSizes[id]
+    return { x: n.x, y: n.y + ((s?.h ?? 220) / 2) }
+  }
+
+  const startConnectFrom = (fromId: string) => {
+    const { x, y } = getRightAnchor(fromId)
+    setConnectDrag({ fromId, x, y })
+  }
+
   // Keyboard shortcut: N to open the create modal
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -381,7 +422,13 @@ export default function App() {
       <div
         data-node
         onMouseDown={(e) => startDrag(e, n.id)}
-        className="absolute select-none rounded-2xl shadow-sm"
+        onMouseEnter={() => {
+          if (connectDrag && connectDrag.fromId !== n.id) setConnectHoverId(n.id)
+        }}
+        onMouseLeave={() => {
+          if (connectHoverId === n.id) setConnectHoverId(null)
+        }}
+        className="group absolute select-none rounded-2xl shadow-sm"
         style={{ left: n.x, top: n.y, width: 420, backgroundColor: colors.body, border: `2px solid ${colors.border}` }}
         ref={makeMeasureRef(n.id)}
       >
@@ -433,11 +480,61 @@ export default function App() {
             {/* footer right badge removed */}
           </div>
         </div>
+        {/* Connect handle (appears on hover) */}
+        <button
+          aria-label="Create connection"
+          onMouseDown={(e) => {
+            e.stopPropagation()
+            startConnectFrom(n.id)
+          }}
+          className="absolute right-[-10px] top-1/2 -translate-y-1/2 h-6 w-6 rounded-full bg-gray-900 text-white grid place-items-center shadow cursor-crosshair opacity-0 group-hover:opacity-100"
+          title="Drag to another card to connect"
+        >
+          +
+        </button>
       </div>
     )
   }
 
   const ConnectionSvg = () => {
+    // Manual connections created by the user
+    const manual: ReactElement[] = []
+    for (const c of connections) {
+      const a = getRightAnchor(c.fromId)
+      const b = getLeftAnchor(c.toId)
+      const mid = (a.x + b.x) / 2
+      manual.push(
+        <path
+          key={c.id}
+          d={`M ${a.x} ${a.y} C ${mid} ${a.y}, ${mid} ${b.y}, ${b.x} ${b.y}`}
+          className="stroke-gray-300"
+          strokeWidth={3}
+          fill="none"
+          vectorEffect="non-scaling-stroke"
+          shapeRendering="geometricPrecision"
+        />
+      )
+    }
+
+    // Temporary connection while dragging
+    if (connectDrag) {
+      const a = getRightAnchor(connectDrag.fromId)
+      const b = { x: connectDrag.x, y: connectDrag.y }
+      const mid = (a.x + b.x) / 2
+      manual.push(
+        <path
+          key="__temp__"
+          d={`M ${a.x} ${a.y} C ${mid} ${a.y}, ${mid} ${b.y}, ${b.x} ${b.y}`}
+          className="stroke-gray-400"
+          strokeDasharray="6 4"
+          strokeWidth={2}
+          fill="none"
+          vectorEffect="non-scaling-stroke"
+          shapeRendering="geometricPrecision"
+        />
+      )
+    }
+
     // Compute department-based connections between adjacent columns, index-aligned
     const departments = Array.from(new Set(nodes.map((n) => n.department)))
       .sort((a, b) => {
@@ -451,7 +548,7 @@ export default function App() {
 
     const columns = departments.map((d) => nodes.filter((n) => n.department === d).sort((a, b) => a.personName.localeCompare(b.personName)))
 
-    const rendered: ReactElement[] = []
+    const rendered: ReactElement[] = [...manual]
 
     for (let i = 0; i < columns.length - 1; i++) {
       const colA = columns[i]
@@ -467,17 +564,17 @@ export default function App() {
         const bx = b.x
         const by = b.y + ((sb?.h ?? 220) / 2)
         const mid = (ax + bx) / 2
-        rendered.push(
-          <path
-            key={`${a.id}-${b.id}`}
-            d={`M ${ax} ${ay} C ${mid} ${ay}, ${mid} ${by}, ${bx} ${by}`}
-            className="stroke-gray-300"
-            strokeWidth={2}
-            fill="none"
-            vectorEffect="non-scaling-stroke"
-            shapeRendering="geometricPrecision"
-          />
-        )
+          rendered.push(
+            <path
+              key={`${a.id}-${b.id}`}
+              d={`M ${ax} ${ay} C ${mid} ${ay}, ${mid} ${by}, ${bx} ${by}`}
+              className="stroke-gray-300"
+              strokeWidth={2}
+              fill="none"
+              vectorEffect="non-scaling-stroke"
+              shapeRendering="geometricPrecision"
+            />
+          )
       }
     }
 
