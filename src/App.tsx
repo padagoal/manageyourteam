@@ -474,6 +474,8 @@ export default function App() {
             className="stroke-gray-300"
             strokeWidth={2}
             fill="none"
+            vectorEffect="non-scaling-stroke"
+            shapeRendering="geometricPrecision"
           />
         )
       }
@@ -548,7 +550,7 @@ export default function App() {
           className="absolute inset-0 origin-top-left"
           style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
         >
-          <svg className="absolute inset-0 w-full h-full pointer-events-none z-0">
+          <svg className="absolute inset-0 w-full h-full pointer-events-none z-0" style={{ overflow: 'visible' }}>
             <ConnectionSvg />
           </svg>
           {/* Department headers */}
