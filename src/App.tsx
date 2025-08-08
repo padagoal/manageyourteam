@@ -632,8 +632,8 @@ export default function App() {
           return (
             <div
               key={dept}
-              className="absolute rounded-md px-3 py-1 font-semibold text-sm shadow-sm"
-              style={{ left: first.x, top: Math.max(20, first.y - 40), backgroundColor: colors.header, color: colors.headerText, border: `1px solid ${colors.border}` }}
+              className="absolute rounded-md px-3 py-1 font-semibold text-2xl shadow-sm"
+              style={{ left: first.x, top: Math.max(20, first.y - 60), backgroundColor: colors.header, color: colors.headerText, border: `1px solid ${colors.border}` }}
             >
               {dept}
             </div>
