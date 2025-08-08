@@ -215,7 +215,9 @@ function useDragZoom() {
       const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
       const mouseX = e.clientX - rect.left
       const mouseY = e.clientY - rect.top
-      const factor = e.deltaY > 0 ? 0.9 : 1.1
+      // Smooth, slower zoom like FigJam
+      const ZOOM_SENSITIVITY = 1.0018
+      const factor = Math.pow(ZOOM_SENSITIVITY, -e.deltaY)
       setZoom((prevZoom) => {
         const nextZoom = Math.min(2.2, Math.max(0.4, prevZoom * factor))
         setPan((prevPan) => {
