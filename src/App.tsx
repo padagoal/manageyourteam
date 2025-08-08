@@ -210,8 +210,27 @@ function useDragZoom() {
 
   const onWheel = (e: React.WheelEvent) => {
     e.preventDefault()
-    const factor = e.deltaY > 0 ? 0.9 : 1.1
-    setZoom((z) => Math.min(2.2, Math.max(0.4, z * factor)))
+    // With Ctrl/Cmd key: zoom toward cursor. Otherwise: pan using scroll deltas
+    if (e.ctrlKey || e.metaKey) {
+      const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+      const mouseX = e.clientX - rect.left
+      const mouseY = e.clientY - rect.top
+      const factor = e.deltaY > 0 ? 0.9 : 1.1
+      setZoom((prevZoom) => {
+        const nextZoom = Math.min(2.2, Math.max(0.4, prevZoom * factor))
+        setPan((prevPan) => {
+          const worldX = (mouseX - prevPan.x) / prevZoom
+          const worldY = (mouseY - prevPan.y) / prevZoom
+          const nextPanX = mouseX - worldX * nextZoom
+          const nextPanY = mouseY - worldY * nextZoom
+          return { x: nextPanX, y: nextPanY }
+        })
+        return nextZoom
+      })
+    } else {
+      const PAN_MULTIPLIER = 1
+      setPan((prev) => ({ x: prev.x - e.deltaX * PAN_MULTIPLIER, y: prev.y - e.deltaY * PAN_MULTIPLIER }))
+    }
   }
 
   const onMouseDown = (e: React.MouseEvent) => {
